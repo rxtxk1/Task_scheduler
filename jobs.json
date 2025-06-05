@@ -1,0 +1,24 @@
+[
+  {
+    "id": 1,
+    "type": "hourly",
+    "minute": 19,
+    "status": "active",
+    "runCount": 1,
+    "lastRun": "2025-06-05T10:49:00.008Z",
+    "logs": [
+      "Run #1 at 2025-06-05T10:49:00.008Z"
+    ]
+  },
+  {
+    "id": 2,
+    "type": "hourly",
+    "minute": 18,
+    "status": "active",
+    "runCount": 1,
+    "lastRun": "2025-06-05T10:48:00.112Z",
+    "logs": [
+      "Run #1 at 2025-06-05T10:48:00.112Z"
+    ]
+  }
+]

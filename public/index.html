@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Job Scheduler</title>
+  <style>
+    body { font-family: Arial; padding: 20px; max-width: 800px; margin: auto; }
+    label, select, input { display: block; margin: 10px 0; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { padding: 8px 12px; border: 1px solid #ccc; }
+    button { padding: 6px 12px; cursor: pointer; }
+    .error { color: red; }
+    .log-list { font-size: 0.9em; max-height: 100px; overflow-y: auto; background: #f9f9f9; padding: 6px; border: 1px solid #ddd; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Schedule a Job</h1>
+
+  <form id="jobForm">
+    <label for="type">Schedule Type:</label>
+    <select id="type" name="type" required>
+      <option value="">Select</option>
+      <option value="hourly">Hourly</option>
+      <option value="daily">Daily</option>
+      <option value="weekly">Weekly</option>
+    </select>
+
+    <div id="hourField" style="display: none;">
+      <label for="hour">Hour (0-23):</label>
+      <input type="number" id="hour" name="hour" min="0" max="23" />
+    </div>
+
+    <div id="minuteField" style="display: none;">
+      <label for="minute">Minute (0-59):</label>
+      <input type="number" id="minute" name="minute" min="0" max="59" />
+    </div>
+
+    <div id="dayField" style="display: none;">
+      <label for="dayOfWeek">Day of Week (0=Sun, 6=Sat):</label>
+      <input type="number" id="dayOfWeek" name="dayOfWeek" min="0" max="6" />
+    </div>
+
+    <button type="submit">Schedule Job</button>
+  </form>
+
+  <p id="response" class="error"></p>
+
+  <hr />
+  <h2>Scheduled Jobs</h2>
+  <button id="refreshJobsBtn">Refresh Jobs</button>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Hour</th>
+        <th>Minute</th>
+        <th>DayOfWeek</th>
+        <th>Status</th>
+        <th>Last Run</th>
+        <th>Run Count</th>
+        <th>Logs</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="jobList"></tbody>
+  </table>
+
+  <script>
+    const typeSelect = document.getElementById('type');
+    const hourField = document.getElementById('hourField');
+    const minuteField = document.getElementById('minuteField');
+    const dayField = document.getElementById('dayField');
+    const responseText = document.getElementById('response');
+    const jobListTbody = document.getElementById('jobList');
+    const refreshJobsBtn = document.getElementById('refreshJobsBtn');
+
+    function updateFormFields() {
+      const type = typeSelect.value;
+      hourField.style.display = (type === 'daily' || type === 'weekly') ? 'block' : 'none';
+      minuteField.style.display = (type === 'hourly' || type === 'daily' || type === 'weekly') ? 'block' : 'none';
+      dayField.style.display = (type === 'weekly') ? 'block' : 'none';
+
+      // Clear previous error
+      responseText.innerText = '';
+    }
+
+    typeSelect.addEventListener('change', updateFormFields);
+
+    async function fetchJobs() {
+      try {
+        const res = await fetch('/jobs');
+        const jobs = await res.json();
+
+        jobListTbody.innerHTML = '';
+
+        jobs.forEach(job => {
+          const tr = document.createElement('tr');
+
+          // Format last run date nicely or show '-'
+          const lastRun = job.lastRun ? new Date(job.lastRun).toLocaleString() : '-';
+
+          // Logs formatted as list
+          const logsHtml = (job.logs && job.logs.length > 0) 
+            ? `<div class="log-list">${job.logs.slice(-5).map(log => `<div>${log}</div>`).join('')}</div>`
+            : '-';
+
+          tr.innerHTML = `
+            <td>${job.id}</td>
+            <td>${job.type}</td>
+            <td>${job.hour !== undefined ? job.hour : '-'}</td>
+            <td>${job.minute !== undefined ? job.minute : '-'}</td>
+            <td>${job.dayOfWeek !== undefined ? job.dayOfWeek : '-'}</td>
+            <td>${job.status}</td>
+            <td>${lastRun}</td>
+            <td>${job.runCount || 0}</td>
+            <td>${logsHtml}</td>
+            <td>
+              ${job.status === 'active' ? `<button onclick="cancelJob(${job.id})">Cancel</button>` : '-'}
+            </td>
+          `;
+
+          jobListTbody.appendChild(tr);
+        });
+      } catch (err) {
+        responseText.innerText = 'Failed to load jobs.';
+      }
+    }
+
+    async function cancelJob(id) {
+      if (!confirm(`Are you sure you want to cancel Job #${id}?`)) return;
+
+      try {
+        const res = await fetch(`/jobs/${id}`, { method: 'DELETE' });
+        const result = await res.json();
+        alert(result.message || result.error);
+        fetchJobs();
+      } catch {
+        alert('Failed to cancel job.');
+      }
+    }
+
+    document.getElementById('jobForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      responseText.innerText = '';
+
+      const data = {
+        type: typeSelect.value,
+        hour: hourField.style.display === 'block' ? document.getElementById('hour').value : undefined,
+        minute: minuteField.style.display === 'block' ? document.getElementById('minute').value : undefined,
+        dayOfWeek: dayField.style.display === 'block' ? document.getElementById('dayOfWeek').value : undefined,
+      };
+
+      // Basic frontend validation
+      let errors = [];
+      if (!data.type) errors.push('Schedule Type is required.');
+      if ((data.type === 'hourly' || data.type === 'daily' || data.type === 'weekly') && (data.minute === undefined || data.minute === '')) {
+        errors.push('Minute is required.');
+      }
+      if ((data.type === 'daily' || data.type === 'weekly') && (data.hour === undefined || data.hour === '')) {
+        errors.push('Hour is required.');
+      }
+      if (data.type === 'weekly' && (data.dayOfWeek === undefined || data.dayOfWeek === '')) {
+        errors.push('Day of Week is required.');
+      }
+
+      if (errors.length > 0) {
+        responseText.innerText = errors.join(' ');
+        return;
+      }
+
+      // Convert to numbers
+      if (data.hour !== undefined) data.hour = Number(data.hour);
+      if (data.minute !== undefined) data.minute = Number(data.minute);
+      if (data.dayOfWeek !== undefined) data.dayOfWeek = Number(data.dayOfWeek);
+
+      try {
+        const res = await fetch('/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+
+        const result = await res.json();
+        if (result.error) {
+          responseText.innerText = result.error;
+        } else {
+          responseText.innerText = result.message;
+          // Clear form
+          document.getElementById('jobForm').reset();
+          updateFormFields();
+          fetchJobs();
+        }
+      } catch {
+        responseText.innerText = 'Failed to schedule job.';
+      }
+    });
+
+    refreshJobsBtn.addEventListener('click', fetchJobs);
+
+    // Auto-refresh jobs every 30 seconds
+    setInterval(fetchJobs, 30000);
+
+    // Initial form field setup and load jobs
+    updateFormFields();
+    fetchJobs();
+  </script>
+</body>
+</html>
